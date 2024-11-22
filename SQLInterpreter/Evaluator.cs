@@ -80,27 +80,33 @@ namespace SQLInterpreter {
 
         public object VisitInsert(InsertNode node) {
             var table = db.GetTable(node.Table.Name);
-            var record = new Dictionary<string, object>();
+            var insertedRecords = new List<Dictionary<string, object>>();
 
-            // Validate column count matches value count
-            if (node.Columns.Count != node.Values.Count) {
-                throw new Exception($"Expected {node.Columns.Count} values but got {node.Values.Count}");
+            foreach (var values in node.ValuesList) {
+              // Validate column count matches value count
+              if (node.Columns.Count != values.Count) {
+                  throw new Exception($"Expected {node.Columns.Count} values but got {values.Count}");
+              }
+
+              var record = new Dictionary<string, object>();
+
+              // Build record
+              for (int i = 0; i < node.Columns.Count; i++) {
+                  var columnName = node.Columns[i].Name;
+                  var val = Visit(values[i]);
+                  record[columnName] = val;
+              }
+
+              // Find primary key column
+              var pkColumn = table.Columns.First(c => c.IsPrimaryKey);
+              var pkValue = record[pkColumn.Name].ToString();
+
+              // Insert into B+ tree
+              table.Data.Insert(pkValue, record);
+              insertedRecords.Add(record);
             }
 
-            // Build record
-            for (int i = 0; i < node.Columns.Count; i++) {
-                var columnName = node.Columns[i].Name;
-                var val = Visit(node.Values[i]);
-                record[columnName] = val;
-            }
-
-            // Find primary key column
-            var pkColumn = table.Columns.First(c => c.IsPrimaryKey);
-            var pkValue = record[pkColumn.Name].ToString();
-
-            // Insert into B+ tree
-            table.Data.Insert(pkValue, record);
-            return record;
+            return insertedRecords;
         }
 
         public object VisitUpdate(UpdateNode node) {
@@ -173,6 +179,7 @@ namespace SQLInterpreter {
                 TokenType.MINUS => Subtract(left, right),
                 TokenType.MULTIPLY => Multiply(left, right),
                 TokenType.DIVIDE => Divide(left, right),
+                TokenType.MOD => Modulo(left, right),
                 TokenType.EQUALS => Equals(left, right),
                 TokenType.NOT_EQUALS => !Convert.ToBoolean(Equals(left, right)),
                 TokenType.LESS_THAN => Compare(left, right) < 0,
@@ -257,6 +264,21 @@ namespace SQLInterpreter {
                 return lit.Value;
             }
 
+            // Binary operations
+            if (node is BinaryOpNode binOp) {
+                var left = EvaluateOperand(binOp.Left, record);
+                var right = EvaluateOperand(binOp.Right, record);
+
+                return binOp.Operator switch {
+                    TokenType.PLUS => Add(left, right),
+                    TokenType.MINUS => Subtract(left, right),
+                    TokenType.MULTIPLY => Multiply(left, right),
+                    TokenType.DIVIDE => Divide(left, right),
+                    TokenType.MOD => Modulo(left, right),
+                    _ => throw new Exception($"Unsupported operator in expression: {binOp.Operator}")
+                };
+            }
+
             throw new Exception($"Invalid operand node type: {node.GetType()}");
         }
 
@@ -300,6 +322,31 @@ namespace SQLInterpreter {
                 throw new DivideByZeroException();
             }
             return Convert.ToDecimal(left) / divisor;
+        }
+
+        private object Modulo(object left, object right) {
+          if (left == null || right == null) {
+            return null;
+          }
+
+          // Convert operands to decimal
+          var leftNum = Convert.ToDecimal(left);
+          var rightNum = Convert.ToDecimal(right);
+
+          // Handle division by zero
+          if (rightNum == 0) {
+            throw new DivideByZeroException("Cannot calculate modulo of a number by zero");
+          }
+
+          // Calculate modulo
+          var result = leftNum - Math.Floor(leftNum / rightNum) * rightNum;
+
+          // If both operands are ints, return an int
+          if (left is int || left.ToString().IndexOf('.') == -1 && right is int || right.ToString().IndexOf('.') == -1) {
+            return Convert.ToInt32(result);
+          }
+
+          return result;
         }
 
         private object Equals(object left, object right) {

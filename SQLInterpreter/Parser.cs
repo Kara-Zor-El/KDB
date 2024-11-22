@@ -37,12 +37,12 @@ namespace SQLInterpreter {
     public class InsertNode : ASTNode {
         public IdentifierNode Table { get; }
         public List<IdentifierNode> Columns { get; }
-        public List<ASTNode> Values { get; }
+        public List<List<ASTNode>> ValuesList { get; }
 
-        public InsertNode(IdentifierNode table, List<IdentifierNode> columns, List<ASTNode> values) {
+        public InsertNode(IdentifierNode table, List<IdentifierNode> columns, List<List<ASTNode>> valuesList) {
             Table = table;
             Columns = columns;
-            Values = values;
+            ValuesList = valuesList;
         }
 
         public override T Accept<T>(IVisitor<T> visitor) => visitor.VisitInsert(this);
@@ -232,20 +232,24 @@ namespace SQLInterpreter {
             Expect(TokenType.RIGHT_PAREN);
 
             Expect(TokenType.VALUES);
-            Expect(TokenType.LEFT_PAREN);
-            var values = new List<ASTNode>();
+            var valuesList = new List<List<ASTNode>>();
 
-            // First value
-            values.Add(ParseValue());
+            do {
+              Expect(TokenType.LEFT_PAREN);
+              var values = new List<ASTNode>();
+              // First value
+              values.Add(ParseValue());
 
-            // Additional values
-            while (Match(TokenType.COMMA)) {
-                values.Add(ParseValue());
-            }
+              // Additional values
+              while (Match(TokenType.COMMA)) {
+                  values.Add(ParseValue());
+              }
 
-            Expect(TokenType.RIGHT_PAREN);
+              Expect(TokenType.RIGHT_PAREN);
+              valuesList.Add(values);
+            } while (Match(TokenType.COMMA));
 
-            return new InsertNode(tableName, columns, values);
+            return new InsertNode(tableName, columns, valuesList);
         }
 
         private UpdateNode ParseUpdate() {
@@ -400,7 +404,7 @@ namespace SQLInterpreter {
         private ASTNode ParseMultiplicative() {
             var left = ParsePrimary();
 
-            while (Current.Type is TokenType.MULTIPLY or TokenType.DIVIDE) {
+            while (Current.Type is TokenType.MULTIPLY or TokenType.DIVIDE or TokenType.MOD) {
                 var op = Current.Type;
                 Advance();
                 var right = ParsePrimary();

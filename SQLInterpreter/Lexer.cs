@@ -13,6 +13,7 @@ namespace SQLInterpreter {
         EQUALS, NOT_EQUALS, LESS_THAN, GREATER_THAN,
         LESS_EQUALS, GREATER_EQUALS,
         PLUS, MINUS, MULTIPLY, DIVIDE,
+        MOD,
 
         // Symbols
         LEFT_PAREN, RIGHT_PAREN,
@@ -208,6 +209,9 @@ namespace SQLInterpreter {
                 case '/':
                     Advance();
                     return new Token(TokenType.DIVIDE, "/", line, startColumn);
+                case '%':
+                    Advance();
+                    return new Token(TokenType.MOD, "%", line, startColumn);
             }
 
             // Handle 2 character operators
