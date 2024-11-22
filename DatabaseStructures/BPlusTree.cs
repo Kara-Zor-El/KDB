@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
-namespace ORMK2.DatabaseStructures {
+namespace DatabaseStructures {
     public class BPlusTree<TKey, TValue> where TKey : IComparable<TKey> {
         private Node Root;
         private LeafNode FirstLeaf;

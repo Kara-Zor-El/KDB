@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using ORMK2.DatabaseStructures;
+using DatabaseStructures;
 using System.Text.RegularExpressions;
 
 namespace SQLInterpreter {
@@ -110,10 +110,10 @@ namespace SQLInterpreter {
             foreach (var record in GetAllRecords(table).ToList()) {
                 if (node.WhereClause == null || EvaluateBoolean(node.WhereClause, record)) {
                     foreach (var assignment in node.Assignments) {
-                      var column = table.Columns.FirstOrDefault(c => c.Name == assignment.Key.Name);
-                      if (column == null) throw new Exception($"Column '{assignment.Key.Name}' does not exist");
-                      var value = Visit(assignment.Value);
-                      record[column.Name] = column.CoerceValue(value);
+                        var column = table.Columns.FirstOrDefault(c => c.Name == assignment.Key.Name);
+                        if (column == null) throw new Exception($"Column '{assignment.Key.Name}' does not exist");
+                        var value = Visit(assignment.Value);
+                        record[column.Name] = column.CoerceValue(value);
                     }
 
                     // Find primary key and value
@@ -203,6 +203,17 @@ namespace SQLInterpreter {
 
         private bool EvaluateBoolean(ASTNode node, Dictionary<string, object> record) {
             if (node is BinaryOpNode binaryOp) {
+                // Handle local opperators different from comparison operators
+                if (binaryOp.Operator == TokenType.AND || binaryOp.Operator == TokenType.OR) {
+                    bool leftResult = EvaluateBoolean(binaryOp.Left, record);
+
+                    if (binaryOp.Operator == TokenType.AND && !leftResult) return false;
+                    if (binaryOp.Operator == TokenType.OR && leftResult) return true;
+
+                    bool rightResult = EvaluateBoolean(binaryOp.Right, record);
+                    return binaryOp.Operator == TokenType.AND ? leftResult && rightResult : leftResult || rightResult;
+                }
+
                 var left = EvaluateOperand(binaryOp.Left, record);
                 var right = EvaluateOperand(binaryOp.Right, record);
 
@@ -214,14 +225,12 @@ namespace SQLInterpreter {
                     TokenType.GREATER_THAN => Compare(left, right) > 0,
                     TokenType.GREATER_EQUALS => Compare(left, right) >= 0,
                     TokenType.LIKE => EvaluateLike(left?.ToString(), right?.ToString()),
-                    TokenType.AND => Convert.ToBoolean(left) && Convert.ToBoolean(right),
-                    TokenType.OR => Convert.ToBoolean(left) || Convert.ToBoolean(right),
                     _ => throw new Exception($"Unsupported operator in WHERE clause: {binaryOp.Operator}")
                 };
             }
 
             if (node is IdentifierNode idNode) {
-              return record[idNode.Name] != null;
+                return record[idNode.Name] != null;
             }
 
             throw new Exception($"Invalid WHERE clause node type: {node.GetType()}");

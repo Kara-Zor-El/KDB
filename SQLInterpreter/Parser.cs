@@ -210,44 +210,12 @@ namespace SQLInterpreter {
             Expect(TokenType.FROM);
             var tableName = new IdentifierNode(Expect(TokenType.IDENTIFIER).Value);
 
-            // Parse optional WHERE clause
             ASTNode whereClause = null;
             if (Match(TokenType.WHERE)) {
-                whereClause = ParseWhereClause();
+                whereClause = ParseExpression();
             }
 
             return new SelectNode(columns, tableName, whereClause);
-        }
-
-        private ASTNode ParseWhereClause() {
-            var left = ParseWhereOperand();
-            var op = Current;
-
-            switch (op.Type) {
-                case TokenType.EQUALS:
-                case TokenType.NOT_EQUALS:
-                case TokenType.LESS_THAN:
-                case TokenType.LESS_EQUALS:
-                case TokenType.GREATER_THAN:
-                case TokenType.GREATER_EQUALS:
-                case TokenType.LIKE:
-                    Advance();
-                    var right = ParseWhereOperand();
-                    return new BinaryOpNode(op.Type, left, right);
-                default:
-                    throw new Exception($"Unexpected operator in WHERE clause: {op.Type}");
-            }
-        }
-
-        private ASTNode ParseWhereOperand() {
-            if (Current.Type == TokenType.IDENTIFIER) {
-                return new IdentifierNode(Expect(TokenType.IDENTIFIER).Value);
-            } else if (Current.Type == TokenType.NUMBER_LITERAL) {
-                return new LiteralNode(decimal.Parse(Expect(TokenType.NUMBER_LITERAL).Value), TokenType.NUMBER_LITERAL);
-            } else if (Current.Type == TokenType.STRING_LITERAL) {
-                return new LiteralNode(Expect(TokenType.STRING_LITERAL).Value, TokenType.STRING_LITERAL);
-            }
-            throw new Exception($"Unexpected token in WHERE clause: {Current.Type}");
         }
 
         private InsertNode ParseInsert() {
@@ -278,28 +246,6 @@ namespace SQLInterpreter {
             Expect(TokenType.RIGHT_PAREN);
 
             return new InsertNode(tableName, columns, values);
-        }
-
-        private ASTNode ParseValue() {
-            switch (Current.Type) {
-                case TokenType.NUMBER_LITERAL:
-                    var numToken = Expect(TokenType.NUMBER_LITERAL);
-                    return new LiteralNode(decimal.Parse(numToken.Value), TokenType.NUMBER_LITERAL);
-
-                case TokenType.STRING_LITERAL:
-                    var strToken = Expect(TokenType.STRING_LITERAL);
-                    return new LiteralNode(strToken.Value, TokenType.STRING_LITERAL);
-
-                case TokenType.SINGLE_QUOTE:
-                    Advance(); // consume opening quote
-                    var value = Current.Value;
-                    Advance(); // consume the string content
-                    Expect(TokenType.SINGLE_QUOTE); // consume closing quote
-                    return new LiteralNode(value, TokenType.STRING_LITERAL);
-
-                default:
-                    throw new Exception($"Unexpected token type in value: {Current.Type}");
-            }
         }
 
         private UpdateNode ParseUpdate() {
@@ -347,7 +293,12 @@ namespace SQLInterpreter {
             do {
                 var columnName = new IdentifierNode(Expect(TokenType.IDENTIFIER).Value);
                 var dataType = ParseDataType();
-                bool isPrimaryKey = Match(TokenType.PRIMARY) && Match(TokenType.KEY);
+                bool isPrimaryKey = false;
+
+                if (Match(TokenType.PRIMARY)) {
+                    Expect(TokenType.KEY);
+                    isPrimaryKey = true;
+                }
 
                 columns.Add(new ColumnDefNode(columnName, dataType, isPrimaryKey));
             } while (Match(TokenType.COMMA));
@@ -355,6 +306,12 @@ namespace SQLInterpreter {
             Expect(TokenType.RIGHT_PAREN);
 
             return new CreateTableNode(tableName, columns);
+        }
+
+        private DropTableNode ParseDrop() {
+            Expect(TokenType.DROP);
+            Expect(TokenType.TABLE);
+            return new DropTableNode(new IdentifierNode(Expect(TokenType.IDENTIFIER).Value));
         }
 
         private TokenType ParseDataType() {
@@ -373,17 +330,23 @@ namespace SQLInterpreter {
             }
         }
 
-        private DropTableNode ParseDrop() {
-            Expect(TokenType.DROP);
-            Expect(TokenType.TABLE);
-            return new DropTableNode(new IdentifierNode(Expect(TokenType.IDENTIFIER).Value));
+        private ASTNode ParseValue() {
+            switch (Current.Type) {
+                case TokenType.NUMBER_LITERAL:
+                    var numToken = Expect(TokenType.NUMBER_LITERAL);
+                    return new LiteralNode(decimal.Parse(numToken.Value), TokenType.NUMBER_LITERAL);
+
+                case TokenType.STRING_LITERAL:
+                    var strToken = Expect(TokenType.STRING_LITERAL);
+                    return new LiteralNode(strToken.Value, TokenType.STRING_LITERAL);
+
+                default:
+                    throw new Exception($"Unexpected token type in value: {Current.Type}");
+            }
         }
+
 
         private ASTNode ParseExpression() {
-            return ParseLogicalOr();
-        }
-
-        private ASTNode ParseLogicalOr() {
             var left = ParseLogicalAnd();
 
             while (Match(TokenType.OR)) {
@@ -408,13 +371,14 @@ namespace SQLInterpreter {
         private ASTNode ParseComparison() {
             var left = ParseAdditive();
 
-            while (Current.Type is TokenType.EQUALS or TokenType.NOT_EQUALS
-                   or TokenType.LESS_THAN or TokenType.GREATER_THAN
-                   or TokenType.LESS_EQUALS or TokenType.GREATER_EQUALS) {
+            if (Current.Type is TokenType.EQUALS or TokenType.NOT_EQUALS
+                or TokenType.LESS_THAN or TokenType.GREATER_THAN
+                or TokenType.LESS_EQUALS or TokenType.GREATER_EQUALS
+                or TokenType.LIKE) {
                 var op = Current.Type;
                 Advance();
                 var right = ParseAdditive();
-                left = new BinaryOpNode(op, left, right);
+                return new BinaryOpNode(op, left, right);
             }
 
             return left;
@@ -447,15 +411,22 @@ namespace SQLInterpreter {
         }
 
         private ASTNode ParsePrimary() {
+
             switch (Current.Type) {
                 case TokenType.NUMBER_LITERAL:
-                    return new LiteralNode(decimal.Parse(Current.Value), TokenType.NUMBER_LITERAL);
+                    var numValue = decimal.Parse(Current.Value);
+                    Advance();
+                    return new LiteralNode(numValue, TokenType.NUMBER_LITERAL);
 
                 case TokenType.STRING_LITERAL:
-                    return new LiteralNode(Current.Value, TokenType.STRING_LITERAL);
+                    var strValue = Current.Value;
+                    Advance();
+                    return new LiteralNode(strValue, TokenType.STRING_LITERAL);
 
                 case TokenType.IDENTIFIER:
-                    return new IdentifierNode(Current.Value);
+                    var idValue = Current.Value;
+                    Advance();
+                    return new IdentifierNode(idValue);
 
                 case TokenType.LEFT_PAREN:
                     Advance();
