@@ -11,6 +11,12 @@ namespace SQLInterpreter {
         PLUS, MINUS, MULTIPLY, DIVIDE,
         MOD,
 
+        // Aggregate functions
+        COUNT, SUM, AVG, MIN, MAX,
+
+        // Grouping
+        GROUP, BY, HAVING,
+
         // Symbols
         LEFT_PAREN, RIGHT_PAREN,
         COMMA, SEMICOLON, ASTERISK,

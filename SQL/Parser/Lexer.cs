@@ -13,10 +13,13 @@ namespace SQLInterpreter {
 
         static Lexer() {
             Keywords = new Dictionary<string, TokenType>(StringComparer.OrdinalIgnoreCase) {
+        // DQL (Query Language)
         { "SELECT", TokenType.SELECT },
+        // DML (Data Manipulation Language)
         { "INSERT", TokenType.INSERT },
         { "UPDATE", TokenType.UPDATE },
         { "DELETE", TokenType.DELETE },
+        // DDL (Data Definition Language)
         { "CREATE", TokenType.CREATE },
         { "DROP", TokenType.DROP },
         { "TABLE", TokenType.TABLE },
@@ -37,7 +40,17 @@ namespace SQLInterpreter {
         { "BOOLEAN", TokenType.BOOLEAN },
         { "DATETIME", TokenType.DATETIME },
         { "DATE", TokenType.DATE },
-        { "LIKE", TokenType.LIKE }
+        { "LIKE", TokenType.LIKE },
+        // Aggregate functions
+        { "COUNT", TokenType.COUNT },
+        { "SUM", TokenType.SUM },
+        { "AVG", TokenType.AVG },
+        { "MIN", TokenType.MIN },
+        { "MAX", TokenType.MAX },
+        // Grouping
+        { "GROUP", TokenType.GROUP },
+        { "BY", TokenType.BY },
+        { "HAVING", TokenType.HAVING },
       };
         }
 

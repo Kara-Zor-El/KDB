@@ -15,28 +15,112 @@ namespace SQLInterpreter {
 
         public object VisitSelect(SelectNode node) {
             var table = db.GetTable(node.Table.Name);
-            var results = new List<Dictionary<string, object>>();
+            var allRecords = GetAllRecords(table);
 
-            // Get all records and filter
-            foreach (var record in GetAllRecords(table)) {
-                if (node.WhereClause == null || EvaluateBoolean(node.WhereClause, record)) {
-                    // If selecting all columns
-                    if (node.Columns.Count == 1 && node.Columns[0] is IdentifierNode id && id.Name == "*") {
-                        results.Add(record);
-                    } else {
-                        // Select specific columns
-                        var projection = new Dictionary<string, object>();
-                        foreach (var col in node.Columns) {
-                            if (col is IdentifierNode colId) {
-                                projection[colId.Name] = record[colId.Name];
-                            }
-                        }
-                        results.Add(projection);
-                    }
+            // Apply WHERE clause if present
+            if (node.WhereClause != null) {
+                allRecords = allRecords.Where(r => EvaluateBoolean(node.WhereClause, r));
+            }
+
+            // If no GROUP BY, treat entire result as one group
+            if (!node.GroupBy.Any()) {
+                var result = ProcessGroup(node.Columns, allRecords.ToList());
+
+                // Apply HAVING if present
+                if (node.HavingClause != null && !EvaluateBoolean(node.HavingClause, result)) {
+                    return new List<Dictionary<string, object>>();
+                }
+                return new List<Dictionary<string, object>> { result };
+            }
+
+            // Group the records
+            var groups = allRecords.GroupBy(r => string.Join(":",
+                node.GroupBy.Select(g => r[g.Name]?.ToString() ?? "null")));
+
+            var results = new List<Dictionary<string, object>>();
+            foreach (var group in groups) {
+                var groupRecords = group.ToList();
+                var groupResult = ProcessGroup(node.Columns, groupRecords, node.GroupBy);
+
+                // Apply HAVING clause if present
+                if (node.HavingClause == null || EvaluateBoolean(node.HavingClause, groupResult)) {
+                    results.Add(groupResult);
                 }
             }
 
             return results;
+        }
+
+        private Dictionary<string, object> ProcessGroup(List<ASTNode> columns, List<Dictionary<string, object>> records,
+            List<IdentifierNode> groupBy = null) {
+            var result = new Dictionary<string, object>();
+
+            // Set up context for aggregate functions
+            currentGroup = records;
+
+            foreach (var col in columns) {
+                if (col is AggregateNode aggNode) {
+                    string colName = GetAggregateColumnName(aggNode);
+                    result[colName] = Visit(aggNode);
+                } else if (col is IdentifierNode idNode) {
+                    if (idNode.Name == "*") {
+                        foreach (var field in records.FirstOrDefault() ?? new Dictionary<string, object>()) {
+                            result[field.Key] = field.Value;
+                        }
+                    } else {
+                        result[idNode.Name] = records.FirstOrDefault()?[idNode.Name];
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        private string GetAggregateColumnName(AggregateNode node) {
+            if (node.Argument is IdentifierNode id) {
+                return $"{node.Function}({id.Name})";
+            }
+            return node.Function.ToString();
+        }
+
+        private List<Dictionary<string, object>> currentGroup;
+        private List<Dictionary<string, object>> GetCurrentGroup() => currentGroup;
+
+        public object VisitAggregate(AggregateNode node) {
+            var records = GetCurrentGroup();
+
+            if (!records.Any()) return null;
+
+            switch (node.Function) {
+                case TokenType.COUNT:
+                    if (node.Argument is IdentifierNode id && id.Name == "*") {
+                        return records.Count;
+                    }
+                    return records.Count(r => EvaluateOperand(node.Argument, r) != null);
+
+                case TokenType.MIN:
+                    var minValues = records.Select(r => EvaluateOperand(node.Argument, r)).Where(v => v != null);
+                    if (!minValues.Any()) return null;
+                    if (minValues.First() is DateTime)
+                        return minValues.Cast<DateTime>().Min();
+                    return minValues.Cast<IComparable>().Min();
+
+                case TokenType.MAX:
+                    var maxValues = records.Select(r => EvaluateOperand(node.Argument, r)).Where(v => v != null);
+                    if (!maxValues.Any()) return null;
+                    if (maxValues.First() is DateTime)
+                        return maxValues.Cast<DateTime>().Max();
+                    return maxValues.Cast<IComparable>().Max();
+
+                case TokenType.AVG:
+                    return records.Average(r => Convert.ToDecimal(EvaluateOperand(node.Argument, r)));
+
+                case TokenType.SUM:
+                    return records.Sum(r => Convert.ToDecimal(EvaluateOperand(node.Argument, r)));
+
+                default:
+                    throw new Exception($"Unsupported aggregate function: {node.Function}");
+            }
         }
 
         public object VisitInsert(InsertNode node) {
@@ -171,6 +255,13 @@ namespace SQLInterpreter {
 
         private bool EvaluateBoolean(ASTNode node, Dictionary<string, object> record) {
             if (node is BinaryOpNode binaryOp) {
+                // Handle aggregate function in HAVING
+                if (binaryOp.Left is AggregateNode aggNode) {
+                    var aggValue = Visit(aggNode);
+                    var rightValue = EvaluateOperand(binaryOp.Right, record);
+                    return CompareValues(aggValue, rightValue, binaryOp.Operator);
+                }
+
                 // Handle local opperators different from comparison operators
                 if (binaryOp.Operator == TokenType.AND || binaryOp.Operator == TokenType.OR) {
                     bool leftResult = EvaluateBoolean(binaryOp.Left, record);
@@ -339,6 +430,44 @@ namespace SQLInterpreter {
 
             // Fallback to string comparison
             return string.Compare(left.ToString(), right.ToString(), StringComparison.OrdinalIgnoreCase);
+        }
+
+        private bool CompareValues(object left, object right, TokenType op) {
+            if (left == null || right == null) return false;
+
+            // Handle numeric comparisons
+            if (decimal.TryParse(left.ToString(), out decimal leftNum) &&
+                decimal.TryParse(right.ToString(), out decimal rightNum)) {
+                return op switch {
+                    TokenType.EQUALS => leftNum == rightNum,
+                    TokenType.GREATER_THAN => leftNum > rightNum,
+                    TokenType.LESS_THAN => leftNum < rightNum,
+                    TokenType.GREATER_EQUALS => leftNum >= rightNum,
+                    TokenType.LESS_EQUALS => leftNum <= rightNum,
+                    TokenType.NOT_EQUALS => leftNum != rightNum,
+                    _ => throw new Exception($"Unsupported operator: {op}")
+                };
+            }
+
+            // Handle datetime comparisons
+            if (left is DateTime leftDate && DateTime.TryParse(right.ToString(), out DateTime rightDate)) {
+                return op switch {
+                    TokenType.EQUALS => leftDate == rightDate,
+                    TokenType.GREATER_THAN => leftDate > rightDate,
+                    TokenType.LESS_THAN => leftDate < rightDate,
+                    TokenType.GREATER_EQUALS => leftDate >= rightDate,
+                    TokenType.LESS_EQUALS => leftDate <= rightDate,
+                    TokenType.NOT_EQUALS => leftDate != rightDate,
+                    _ => throw new Exception($"Unsupported operator: {op}")
+                };
+            }
+
+            // Default string comparison
+            return op switch {
+                TokenType.EQUALS => left.ToString() == right.ToString(),
+                TokenType.NOT_EQUALS => left.ToString() != right.ToString(),
+                _ => throw new Exception($"Unsupported operator for type: {op}")
+            };
         }
     }
 }

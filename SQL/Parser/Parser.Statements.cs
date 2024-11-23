@@ -3,19 +3,17 @@ namespace SQLInterpreter {
         private SelectNode ParseSelect() {
             Expect(TokenType.SELECT);
 
-            // Parse columns
+            // Parse columns (including aggregates)
             var columns = new List<ASTNode>();
-            if (Match(TokenType.ASTERISK)) {
-                columns.Add(new IdentifierNode("*"));
-            } else {
-                // First column
-                columns.Add(new IdentifierNode(Expect(TokenType.IDENTIFIER).Value));
-
-                // Additional columns
-                while (Match(TokenType.COMMA)) {
+            do {
+                if (Current.Type is TokenType.COUNT or TokenType.MIN or TokenType.MAX or TokenType.AVG or TokenType.SUM) {
+                    columns.Add(ParsePrimary());
+                } else if (Match(TokenType.ASTERISK)) {
+                    columns.Add(new IdentifierNode("*"));
+                } else {
                     columns.Add(new IdentifierNode(Expect(TokenType.IDENTIFIER).Value));
                 }
-            }
+            } while (Match(TokenType.COMMA));
 
             Expect(TokenType.FROM);
             var tableName = new IdentifierNode(Expect(TokenType.IDENTIFIER).Value);
@@ -25,7 +23,21 @@ namespace SQLInterpreter {
                 whereClause = ParseExpression();
             }
 
-            return new SelectNode(columns, tableName, whereClause);
+            List<IdentifierNode> groupBy = null;
+            if (Match(TokenType.GROUP)) {
+                Expect(TokenType.BY);
+                groupBy = new List<IdentifierNode>();
+                do {
+                    groupBy.Add(new IdentifierNode(Expect(TokenType.IDENTIFIER).Value));
+                } while (Match(TokenType.COMMA));
+            }
+
+            ASTNode havingClause = null;
+            if (Match(TokenType.HAVING)) {
+                havingClause = ParseExpression();
+            }
+
+            return new SelectNode(columns, tableName, whereClause, groupBy, havingClause);
         }
 
         private InsertNode ParseInsert() {

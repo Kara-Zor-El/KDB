@@ -3,11 +3,15 @@ namespace SQLInterpreter {
         public List<ASTNode> Columns { get; }
         public IdentifierNode Table { get; }
         public ASTNode WhereClause { get; }
+        public List<IdentifierNode> GroupBy { get; }
+        public ASTNode HavingClause { get; }
 
-        public SelectNode(List<ASTNode> columns, IdentifierNode table, ASTNode whereClause) {
+        public SelectNode(List<ASTNode> columns, IdentifierNode table, ASTNode whereClause, List<IdentifierNode> groupBy = null, ASTNode havingClause = null) {
             Columns = columns;
             Table = table;
             WhereClause = whereClause;
+            GroupBy = groupBy ?? new List<IdentifierNode>();
+            HavingClause = havingClause;
         }
 
         public override T Accept<T>(IVisitor<T> visitor) => visitor.VisitSelect(this);

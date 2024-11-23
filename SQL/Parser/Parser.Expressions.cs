@@ -67,6 +67,22 @@ namespace SQLInterpreter {
         private ASTNode ParsePrimary() {
 
             switch (Current.Type) {
+                case TokenType.COUNT:
+                case TokenType.MIN:
+                case TokenType.MAX:
+                case TokenType.AVG:
+                case TokenType.SUM:
+                    var function = Current.Type;
+                    Advance();
+                    Expect(TokenType.LEFT_PAREN);
+                    ASTNode arg;
+                    if (function == TokenType.COUNT && Match(TokenType.ASTERISK)) {
+                        arg = new IdentifierNode("*");
+                    } else {
+                        arg = ParseExpression();
+                    }
+                    Expect(TokenType.RIGHT_PAREN);
+                    return new AggregateNode(function, arg);
                 case TokenType.NUMBER_LITERAL:
                     var numValue = decimal.Parse(Current.Value);
                     Advance();
