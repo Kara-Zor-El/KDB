@@ -294,6 +294,7 @@ namespace SQLInterpreter {
                 TokenType.DECIMAL => typeof(decimal),
                 TokenType.BOOLEAN => typeof(bool),
                 TokenType.DATETIME => typeof(DateTime),
+                TokenType.DATE => typeof(DateOnly),
                 _ => throw new Exception($"Unsupported type: {sqlType}")
             };
         }

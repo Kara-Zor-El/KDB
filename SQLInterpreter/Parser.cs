@@ -327,6 +327,7 @@ namespace SQLInterpreter {
                 case TokenType.DECIMAL:
                 case TokenType.BOOLEAN:
                 case TokenType.DATETIME:
+                case TokenType.DATE:
                     Advance();
                     return type.Type;
                 default:

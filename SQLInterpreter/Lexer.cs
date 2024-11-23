@@ -7,7 +7,7 @@ namespace SQLInterpreter {
         // Keywords
         SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, TABLE,
         FROM, WHERE, INTO, VALUES, SET, AND, OR, NOT,
-        PRIMARY, KEY, INT, VARCHAR, TEXT, DECIMAL, BOOLEAN, DATETIME,
+        PRIMARY, KEY, INT, VARCHAR, TEXT, DECIMAL, BOOLEAN, DATETIME, DATE,
 
         // Operators
         EQUALS, NOT_EQUALS, LESS_THAN, GREATER_THAN,
@@ -80,6 +80,7 @@ namespace SQLInterpreter {
         { "DECIMAL", TokenType.DECIMAL },
         { "BOOLEAN", TokenType.BOOLEAN },
         { "DATETIME", TokenType.DATETIME },
+        { "DATE", TokenType.DATE },
         { "LIKE", TokenType.LIKE }
       };
         }

@@ -79,6 +79,8 @@ namespace SQLInterpreter {
                 return "BOOLEAN";
             if (DataType == typeof(DateTime))
                 return "DATETIME";
+            if (DataType == typeof(DateOnly))
+                return "DATE";
 
             throw new NotSupportedException($"Unsupported data type: {DataType.Name}");
         }
