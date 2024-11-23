@@ -1,50 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using DatabaseStructures;
 using System.Text.RegularExpressions;
+using DatabaseStructures;
+using SQLInterpreter.Core;
 
 namespace SQLInterpreter {
-    public class Database {
-        private Dictionary<string, Table> tables;
-
-        public Database() {
-            tables = new Dictionary<string, Table>(StringComparer.OrdinalIgnoreCase);
-        }
-
-        public void CreateTable(string name, List<Column> columns) {
-            if (tables.ContainsKey(name)) {
-                throw new Exception($"Table '{name}' already exists");
-            }
-            tables[name] = new Table(name, columns);
-        }
-
-        public Table GetTable(string name) {
-            if (!tables.TryGetValue(name, out Table table)) {
-                throw new Exception($"Table '{name}' does not exist");
-            }
-            return table;
-        }
-
-        public void DropTable(string name) {
-            if (!tables.Remove(name)) {
-                throw new Exception($"Table '{name}' does not exist");
-            }
-        }
-    }
-
-    public class Table {
-        public string Name { get; }
-        public List<Column> Columns { get; }
-        public BPlusTree<string, Dictionary<string, object>> Data { get; }
-
-        public Table(string name, List<Column> columns) {
-            Name = name;
-            Columns = columns;
-            Data = new BPlusTree<string, Dictionary<string, object>>(4);
-        }
-    }
-
     public class Evaluator : IVisitor<object> {
         private readonly Database db;
 
@@ -83,27 +44,27 @@ namespace SQLInterpreter {
             var insertedRecords = new List<Dictionary<string, object>>();
 
             foreach (var values in node.ValuesList) {
-              // Validate column count matches value count
-              if (node.Columns.Count != values.Count) {
-                  throw new Exception($"Expected {node.Columns.Count} values but got {values.Count}");
-              }
+                // Validate column count matches value count
+                if (node.Columns.Count != values.Count) {
+                    throw new Exception($"Expected {node.Columns.Count} values but got {values.Count}");
+                }
 
-              var record = new Dictionary<string, object>();
+                var record = new Dictionary<string, object>();
 
-              // Build record
-              for (int i = 0; i < node.Columns.Count; i++) {
-                  var columnName = node.Columns[i].Name;
-                  var val = Visit(values[i]);
-                  record[columnName] = val;
-              }
+                // Build record
+                for (int i = 0; i < node.Columns.Count; i++) {
+                    var columnName = node.Columns[i].Name;
+                    var val = Visit(values[i]);
+                    record[columnName] = val;
+                }
 
-              // Find primary key column
-              var pkColumn = table.Columns.First(c => c.IsPrimaryKey);
-              var pkValue = record[pkColumn.Name].ToString();
+                // Find primary key column
+                var pkColumn = table.Columns.First(c => c.IsPrimaryKey);
+                var pkValue = record[pkColumn.Name].ToString();
 
-              // Insert into B+ tree
-              table.Data.Insert(pkValue, record);
-              insertedRecords.Add(record);
+                // Insert into B+ tree
+                table.Data.Insert(pkValue, record);
+                insertedRecords.Add(record);
             }
 
             return insertedRecords;
@@ -326,28 +287,28 @@ namespace SQLInterpreter {
         }
 
         private object Modulo(object left, object right) {
-          if (left == null || right == null) {
-            return null;
-          }
+            if (left == null || right == null) {
+                return null;
+            }
 
-          // Convert operands to decimal
-          var leftNum = Convert.ToDecimal(left);
-          var rightNum = Convert.ToDecimal(right);
+            // Convert operands to decimal
+            var leftNum = Convert.ToDecimal(left);
+            var rightNum = Convert.ToDecimal(right);
 
-          // Handle division by zero
-          if (rightNum == 0) {
-            throw new DivideByZeroException("Cannot calculate modulo of a number by zero");
-          }
+            // Handle division by zero
+            if (rightNum == 0) {
+                throw new DivideByZeroException("Cannot calculate modulo of a number by zero");
+            }
 
-          // Calculate modulo
-          var result = leftNum - Math.Floor(leftNum / rightNum) * rightNum;
+            // Calculate modulo
+            var result = leftNum - Math.Floor(leftNum / rightNum) * rightNum;
 
-          // If both operands are ints, return an int
-          if (left is int || left.ToString().IndexOf('.') == -1 && right is int || right.ToString().IndexOf('.') == -1) {
-            return Convert.ToInt32(result);
-          }
+            // If both operands are ints, return an int
+            if (left is int || left.ToString().IndexOf('.') == -1 && right is int || right.ToString().IndexOf('.') == -1) {
+                return Convert.ToInt32(result);
+            }
 
-          return result;
+            return result;
         }
 
         private object Equals(object left, object right) {

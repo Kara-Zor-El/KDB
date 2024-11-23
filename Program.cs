@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text;
+using SQLInterpreter;
 
 class Program {
     static void Main(string[] args) {
