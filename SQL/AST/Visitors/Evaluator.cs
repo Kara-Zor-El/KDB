@@ -15,32 +15,41 @@ namespace SQLInterpreter {
 
         public object VisitSelect(SelectNode node) {
             var table = db.GetTable(node.Table.Name);
-            var allRecords = GetAllRecords(table);
+            var allRecords = GetAllRecords(table).ToList();  // Materialize the records
 
             // Apply WHERE clause if present
             if (node.WhereClause != null) {
-                allRecords = allRecords.Where(r => EvaluateBoolean(node.WhereClause, r));
+                allRecords = allRecords.Where(r => EvaluateBoolean(node.WhereClause, r)).ToList();
             }
 
-            // If no GROUP BY, treat entire result as one group
-            if (!node.GroupBy.Any()) {
-                var result = ProcessGroup(node.Columns, allRecords.ToList());
-
-                // Apply HAVING if present
-                if (node.HavingClause != null && !EvaluateBoolean(node.HavingClause, result)) {
-                    return new List<Dictionary<string, object>>();
+            // If no GROUP BY, and no aggregates, return filtered records directly
+            if (!node.GroupBy.Any() && !node.Columns.Any(c => c is AggregateNode)) {
+                // Handle SELECT *
+                if (node.Columns.Count == 1 && node.Columns[0] is IdentifierNode id && id.Name == "*") {
+                    return allRecords;
                 }
-                return new List<Dictionary<string, object>> { result };
+
+                // Handle specific columns
+                return allRecords.Select(record => {
+                    var projection = new Dictionary<string, object>();
+                    foreach (var col in node.Columns) {
+                        if (col is IdentifierNode colId) {
+                            projection[colId.Name] = record[colId.Name];
+                        }
+                    }
+                    return projection;
+                }).ToList();
             }
 
-            // Group the records
-            var groups = allRecords.GroupBy(r => string.Join(":",
-                node.GroupBy.Select(g => r[g.Name]?.ToString() ?? "null")));
+            // Handle grouping and aggregation
+            var groupedResults = !node.GroupBy.Any()
+                ? new[] { new { Key = "", Records = allRecords } }
+                : allRecords.GroupBy(r => string.Join(":", node.GroupBy.Select(g => r[g.Name]?.ToString() ?? "null")))
+                          .Select(g => new { g.Key, Records = g.ToList() });
 
             var results = new List<Dictionary<string, object>>();
-            foreach (var group in groups) {
-                var groupRecords = group.ToList();
-                var groupResult = ProcessGroup(node.Columns, groupRecords, node.GroupBy);
+            foreach (var group in groupedResults) {
+                var groupResult = ProcessGroup(node.Columns, group.Records, node.GroupBy);
 
                 // Apply HAVING clause if present
                 if (node.HavingClause == null || EvaluateBoolean(node.HavingClause, groupResult)) {

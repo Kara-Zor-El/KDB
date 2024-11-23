@@ -3,7 +3,7 @@ namespace SQLInterpreter {
         private SelectNode ParseSelect() {
             Expect(TokenType.SELECT);
 
-            // Parse columns (including aggregates)
+            // Parse columns
             var columns = new List<ASTNode>();
             do {
                 if (Current.Type is TokenType.COUNT or TokenType.MIN or TokenType.MAX or TokenType.AVG or TokenType.SUM) {
@@ -18,12 +18,17 @@ namespace SQLInterpreter {
             Expect(TokenType.FROM);
             var tableName = new IdentifierNode(Expect(TokenType.IDENTIFIER).Value);
 
+            // Parse optional clauses in correct order: WHERE -> GROUP BY -> HAVING
             ASTNode whereClause = null;
+            List<IdentifierNode> groupBy = null;
+            ASTNode havingClause = null;
+
+            // First check for WHERE
             if (Match(TokenType.WHERE)) {
                 whereClause = ParseExpression();
             }
 
-            List<IdentifierNode> groupBy = null;
+            // Then GROUP BY
             if (Match(TokenType.GROUP)) {
                 Expect(TokenType.BY);
                 groupBy = new List<IdentifierNode>();
@@ -32,9 +37,22 @@ namespace SQLInterpreter {
                 } while (Match(TokenType.COMMA));
             }
 
-            ASTNode havingClause = null;
+            // Finally HAVING (only valid after GROUP BY)
             if (Match(TokenType.HAVING)) {
+                if (groupBy == null) {
+                    throw new Exception("HAVING clause requires GROUP BY");
+                }
                 havingClause = ParseExpression();
+            }
+
+            // Throw error if WHERE appears after GROUP BY
+            if (Current.Type == TokenType.WHERE) {
+                throw new Exception("WHERE clause must come before GROUP BY");
+            }
+
+            // Validate end of statement
+            if (Current.Type != TokenType.SEMICOLON && Current.Type != TokenType.EOF) {
+                throw new Exception($"Unexpected token '{Current.Value}' at line {Current.Line}, column {Current.Column}. Expected end of statement.");
             }
 
             return new SelectNode(columns, tableName, whereClause, groupBy, havingClause);
