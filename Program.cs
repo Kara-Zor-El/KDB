@@ -1,10 +1,13 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Text;
 
 class Program {
     static void Main(string[] args) {
 
         var interpreter = new SQLInterpreter.SQLInterpreter();
 
+        /*
         // Example queries
         string[] queries = {
           // Create a table
@@ -48,11 +51,13 @@ class Program {
             Console.WriteLine(interpreter.ExecuteQuery(query));
             Console.WriteLine("\n" + new string('-', 50) + "\n");
         }
+        */
+
+        var inputHandler = new InputHandler();
 
         Console.WriteLine("Enter SQL queries (type 'exit' to quit):");
         while (true) {
-            Console.Write("\nSQL> ");
-            string input = Console.ReadLine();
+            string input = inputHandler.GetNextInput();
 
             if (string.IsNullOrWhiteSpace(input)) {
                 continue;
