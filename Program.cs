@@ -6,7 +6,7 @@ using SQLInterpreter;
 class Program {
     static void Main(string[] args) {
 
-        var interpreter = new SQLInterpreter.SQLInterpreter();
+        var interpreter = new SQLInterpreter.SQLInterpreter("test.db");
 
         /*
         // Example queries

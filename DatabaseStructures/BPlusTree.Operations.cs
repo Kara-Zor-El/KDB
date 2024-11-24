@@ -1,3 +1,6 @@
+using System.Text;
+using System.Text.Json;
+
 namespace DatabaseStructures {
     public partial class BPlusTree<TKey, TValue> where TKey : IComparable<TKey> {
         public void Insert(TKey key, TValue value) {
@@ -11,9 +14,6 @@ namespace DatabaseStructures {
                 SplitNode(leaf);
             }
 
-            if (PersistToDisk) {
-                PersistToDiskWriter();
-            }
         }
 
         public TValue Get(TKey key) {
@@ -45,9 +45,6 @@ namespace DatabaseStructures {
                 Root.Parent = null;
             }
 
-            if (PersistToDisk) {
-                PersistToDiskWriter();
-            }
         }
 
         public IEnumerable<KeyValuePair<TKey, TValue>> Range(TKey start, TKey end) {
@@ -209,35 +206,22 @@ namespace DatabaseStructures {
             return index;
         }
 
-        private void PersistToDiskWriter() {
-            using (FileStream fs = new FileStream(DataFilePath, FileMode.Create))
-            using (BinaryWriter writer = new BinaryWriter(fs)) {
-                // Write tree metadata
-                writer.Write(Order);
-                writer.Write(MinKeys);
-
-                // Serialize the tree structure
-                SerializeNode(Root, writer);
-            }
-        }
-
         private void SerializeNode(Node node, BinaryWriter writer) {
             writer.Write(node.IsLeaf);
             writer.Write(node.Keys.Count);
 
             // Write keys
             foreach (TKey key in node.Keys) {
-                // Implement custom serialization for TKey
-                writer.Write(key.ToString());
+                SerializeKey(key, writer);
             }
 
             if (node.IsLeaf) {
                 LeafNode leaf = (LeafNode)node;
                 writer.Write(leaf.Entries.Count);
+
                 foreach (var entry in leaf.Entries) {
-                    // Implement custom serialization for TKey and TValue
-                    writer.Write(entry.Key.ToString());
-                    writer.Write(entry.Value.ToString());
+                    SerializeKey(entry.Key, writer);
+                    SerializeValue(entry.Value, writer);
                 }
             } else {
                 InternalNode internalNode = (InternalNode)node;
@@ -247,19 +231,66 @@ namespace DatabaseStructures {
             }
         }
 
-        private void LoadFromDisk() {
-            using (FileStream fs = new FileStream(DataFilePath, FileMode.Open))
-            using (BinaryReader reader = new BinaryReader(fs)) {
-                // Read tree metadata
-                int order = reader.ReadInt32();
-                int minKeys = reader.ReadInt32();
-
-                // Deserialize the tree structure
-                Root = DeserializeNode(reader, null);
-
-                // Rebuild leaf node links
-                RebuildLeafLinks();
+        private void SerializeKey(TKey key, BinaryWriter writer) {
+            if (key is string strKey) {
+                writer.Write(strKey);
+            } else if (key is int intKey) {
+                writer.Write(intKey);
+            } else if (key is decimal decKey) {
+                writer.Write(decKey);
+            } else if (key is DateTime dtKey) {
+                writer.Write(dtKey.ToBinary());
+            } else {
+                throw new NotSupportedException($"Serialization not implemented for key type {typeof(TKey)}");
             }
+        }
+
+        private void SerializeValue(TValue value, BinaryWriter writer) {
+            // For Dictionary<string, object> we need special handling
+            if (value is Dictionary<string, object> dict) {
+                // Convert dictionary to JSON string
+                string jsonString = JsonSerializer.Serialize(dict);
+                writer.Write(jsonString);
+            } else if (value is string strValue) {
+                writer.Write(strValue);
+            } else if (value is int intValue) {
+                writer.Write(intValue);
+            } else if (value is decimal decValue) {
+                writer.Write(decValue);
+            } else if (value is DateTime dtValue) {
+                writer.Write(dtValue.ToBinary());
+            } else {
+                throw new NotSupportedException($"Serialization not implemented for value type {typeof(TValue)}");
+            }
+        }
+
+        private TKey DeserializeKey(BinaryReader reader) {
+            if (typeof(TKey) == typeof(string)) {
+                return (TKey)(object)reader.ReadString();
+            } else if (typeof(TKey) == typeof(int)) {
+                return (TKey)(object)reader.ReadInt32();
+            } else if (typeof(TKey) == typeof(decimal)) {
+                return (TKey)(object)reader.ReadDecimal();
+            } else if (typeof(TKey) == typeof(DateTime)) {
+                return (TKey)(object)DateTime.FromBinary(reader.ReadInt64());
+            }
+            throw new NotSupportedException($"Deserialization not implemented for key type {typeof(TKey)}");
+        }
+
+        private TValue DeserializeValue(BinaryReader reader) {
+            if (typeof(TValue) == typeof(Dictionary<string, object>)) {
+                string jsonString = reader.ReadString();
+                return (TValue)(object)JsonSerializer.Deserialize<Dictionary<string, object>>(jsonString);
+            } else if (typeof(TValue) == typeof(string)) {
+                return (TValue)(object)reader.ReadString();
+            } else if (typeof(TValue) == typeof(int)) {
+                return (TValue)(object)reader.ReadInt32();
+            } else if (typeof(TValue) == typeof(decimal)) {
+                return (TValue)(object)reader.ReadDecimal();
+            } else if (typeof(TValue) == typeof(DateTime)) {
+                return (TValue)(object)DateTime.FromBinary(reader.ReadInt64());
+            }
+            throw new NotSupportedException($"Deserialization not implemented for value type {typeof(TValue)}");
         }
 
         private Node DeserializeNode(BinaryReader reader, Node parent) {
@@ -273,19 +304,15 @@ namespace DatabaseStructures {
 
                 // Read keys
                 for (int i = 0; i < keyCount; i++) {
-                    // Implement custom deserialization for TKey
-                    string keyStr = reader.ReadString();
-                    TKey key = DeserializeKey(keyStr);
+                    TKey key = DeserializeKey(reader);
                     leaf.Keys.Add(key);
                 }
 
                 // Read entries
                 int entryCount = reader.ReadInt32();
                 for (int i = 0; i < entryCount; i++) {
-                    string keyStr = reader.ReadString();
-                    string valueStr = reader.ReadString();
-                    TKey key = DeserializeKey(keyStr);
-                    TValue value = DeserializeValue(valueStr);
+                    TKey key = DeserializeKey(reader);
+                    TValue value = DeserializeValue(reader);
                     leaf.Entries[key] = value;
                 }
             } else {
@@ -294,8 +321,7 @@ namespace DatabaseStructures {
 
                 // Read keys
                 for (int i = 0; i < keyCount; i++) {
-                    string keyStr = reader.ReadString();
-                    TKey key = DeserializeKey(keyStr);
+                    TKey key = DeserializeKey(reader);
                     internalNode.Keys.Add(key);
                 }
 

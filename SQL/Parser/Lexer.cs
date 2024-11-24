@@ -109,12 +109,8 @@ namespace SQLInterpreter {
         private Token ReadNumber() {
             int startColumn = column;
             string value = "";
-            bool hasDecimal = false;
 
             while (position < input.Length && char.IsDigit(Peek()) || Peek() == '.') {
-                if (Peek() == '.') {
-                    hasDecimal = true;
-                }
                 value += Peek();
                 Advance();
             }

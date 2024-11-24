@@ -4,9 +4,11 @@ using System.Collections.Generic;
 namespace SQLInterpreter.Core {
     public class Database {
         private Dictionary<string, Table> tables;
+        private readonly string filePath;
 
-        public Database() {
+        public Database(string filePath = null) {
             tables = new Dictionary<string, Table>(StringComparer.OrdinalIgnoreCase);
+            this.filePath = filePath;
         }
 
         public void CreateTable(string name, List<Column> columns) {
