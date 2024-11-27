@@ -32,10 +32,8 @@ namespace SQLInterpreter {
                 // Handle specific columns
                 return allRecords.Select(record => {
                     var projection = new Dictionary<string, object>();
-                    foreach (var col in node.Columns) {
-                        if (col is IdentifierNode colId) {
-                            projection[colId.Name] = record[colId.Name];
-                        }
+                    foreach (var col in node.Columns.OfType<IdentifierNode>()) {
+                        projection[col.Name] = record[col.Name];
                     }
                     return projection;
                 }).ToList();
@@ -307,40 +305,60 @@ namespace SQLInterpreter {
         private bool EvaluateLike(string value, string pattern) {
             if (value == null || pattern == null) return false;
 
-            pattern = Regex.Escape(pattern)
-              .Replace("%", ".*")
-              .Replace("_", ".");
+            int valueIndex = 0;
+            int patternIndex = 0;
+            int starIndex = -1;
+            int tempIndex = -1;
+            while (valueIndex < value.Length) {
+              if (patternIndex < pattern.Length && 
+                  (pattern[patternIndex] == '_' ||
+                    value[valueIndex] == pattern[patternIndex])) {
+                valueIndex++;
+                patternIndex++;
+              } else if (patternIndex < pattern.Length && pattern[patternIndex] == '%') {
+                starIndex = patternIndex;
+                tempIndex = valueIndex;
+                patternIndex++;
+              } else if (starIndex != -1) {
+                patternIndex = starIndex + 1;
+                valueIndex = ++tempIndex;
+              } else {
+                return false;
+              }
+            }
 
-            return Regex.IsMatch(value, $"^{pattern}$", RegexOptions.IgnoreCase);
+            while (patternIndex < pattern.Length && pattern[patternIndex] == '%') {
+                patternIndex++;
+            }
+
+            return patternIndex == pattern.Length;
         }
 
         private object EvaluateOperand(ASTNode node, Dictionary<string, object> record) {
-            if (node is IdentifierNode id) {
-                if (!record.ContainsKey(id.Name))
-                    throw new Exception($"Column '{id.Name}' not found");
-                return record[id.Name];
-            }
+          switch (node) {
+            case IdentifierNode id:
+              if (!record.ContainsKey(id.Name))
+                throw new Exception($"Column '{id.Name}' not found");
+              return record[id.Name];
 
-            if (node is LiteralNode lit) {
-                return lit.Value;
-            }
+            case LiteralNode lit:
+              return lit.Value;
 
-            // Binary operations
-            if (node is BinaryOpNode binOp) {
-                var left = EvaluateOperand(binOp.Left, record);
-                var right = EvaluateOperand(binOp.Right, record);
+            case BinaryOpNode binOp:
+              var left = EvaluateOperand(binOp.Left, record);
+              var right = EvaluateOperand(binOp.Right, record);
+              return binOp.Operator switch {
+                TokenType.PLUS => Add(left, right),
+                TokenType.MINUS => Subtract(left, right),
+                TokenType.MULTIPLY => Multiply(left, right),
+                TokenType.DIVIDE => Divide(left, right),
+                TokenType.MOD => Modulo(left, right),
+                _ => throw new Exception($"Unsupported operator in expression: {binOp.Operator}")
+              };
 
-                return binOp.Operator switch {
-                    TokenType.PLUS => Add(left, right),
-                    TokenType.MINUS => Subtract(left, right),
-                    TokenType.MULTIPLY => Multiply(left, right),
-                    TokenType.DIVIDE => Divide(left, right),
-                    TokenType.MOD => Modulo(left, right),
-                    _ => throw new Exception($"Unsupported operator in expression: {binOp.Operator}")
-                };
-            }
-
-            throw new Exception($"Invalid operand node type: {node.GetType()}");
+            default:
+              throw new Exception($"Invalid operand node type: {node.GetType()}");
+          }
         }
 
         private IEnumerable<Dictionary<string, object>> GetAllRecords(Table table) {

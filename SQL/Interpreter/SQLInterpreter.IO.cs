@@ -110,18 +110,13 @@ namespace SQLInterpreter {
             try {
                 // Special handling for numeric types
                 if (IsNumericType(targetType)) {
-                    if (value is decimal || value is double || value is float ||
-                        value is int || value is long || value is short ||
-                        value is byte || value is uint || value is ulong ||
-                        value is ushort || value is sbyte) {
-                        // Try converting to the target numeric type
-                        Convert.ChangeType(value, targetType, CultureInfo.InvariantCulture);
-                        return true;
-                    }
-                    if (value is string strVal) {
-                        // Try parsing string to the target numeric type
-                        return TryParseNumeric(strVal, targetType);
-                    }
+                    Convert.ChangeType(value, targetType, CultureInfo.InvariantCulture);
+                    return true;
+                }
+
+                // Handle string
+                if (targetType == typeof(string)) {
+                    return true;
                 }
 
                 // Handle DateTime

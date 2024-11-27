@@ -37,11 +37,12 @@ namespace SQLInterpreter {
                 var result = ast.Accept(evaluator);
 
                 // Save changes to file if path is specified
-                if (filePath != null && (tokens[0].Type == TokenType.INSERT ||
-                                       tokens[0].Type == TokenType.UPDATE ||
-                                       tokens[0].Type == TokenType.DELETE ||
-                                       tokens[0].Type == TokenType.CREATE ||
-                                       tokens[0].Type == TokenType.DROP)) {
+                var tokenType = tokens[0].Type;
+                if (filePath != null && (tokenType == TokenType.INSERT ||
+                                          tokenType == TokenType.UPDATE ||
+                                          tokenType == TokenType.DELETE ||
+                                          tokenType == TokenType.CREATE ||
+                                          tokenType == TokenType.DROP)) {
                     SaveToFile();
                 }
 
