@@ -51,6 +51,7 @@ namespace SQLInterpreter {
         { "GROUP", TokenType.GROUP },
         { "BY", TokenType.BY },
         { "HAVING", TokenType.HAVING },
+        { "AS", TokenType.AS },
       };
         }
 
@@ -178,6 +179,9 @@ namespace SQLInterpreter {
                 case '%':
                     Advance();
                     return new Token(TokenType.MOD, "%", line, startColumn);
+                case '.':
+                    Advance();
+                    return new Token(TokenType.DOT, ".", line, startColumn);
             }
 
             // Handle 2 character operators

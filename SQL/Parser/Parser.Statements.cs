@@ -6,17 +6,47 @@ namespace SQLInterpreter {
             // Parse columns
             var columns = new List<ASTNode>();
             do {
+                ASTNode column;
                 if (Current.Type is TokenType.COUNT or TokenType.MIN or TokenType.MAX or TokenType.AVG or TokenType.SUM) {
-                    columns.Add(ParsePrimary());
+                  column = ParsePrimary();
+
+                  // Handle optional alias for aggregate
+                  if (Match(TokenType.AS)) {
+                    string alias = Expect(TokenType.IDENTIFIER).Value;
+                    column = new AliasNode(column, alias);
+                  }
                 } else if (Match(TokenType.ASTERISK)) {
-                    columns.Add(new IdentifierNode("*"));
+                  column = new IdentifierNode("*");
                 } else {
-                    columns.Add(new IdentifierNode(Expect(TokenType.IDENTIFIER).Value));
+                  column = ParseExpression();
+
+                  // Handle optional alias
+                  if (Match(TokenType.AS)) {
+                    string alias = Expect(TokenType.IDENTIFIER).Value;
+                    column = new AliasNode(column, alias);
+                  }
                 }
+                columns.Add(column);
             } while (Match(TokenType.COMMA));
 
             Expect(TokenType.FROM);
+
+            // Parse table name
             var tableName = new IdentifierNode(Expect(TokenType.IDENTIFIER).Value);
+
+            // Handle table alias
+            ASTNode tableRef = tableName;
+            if (Current.Type == TokenType.IDENTIFIER || Current.Type == TokenType.AS) {
+              if (Match(TokenType.AS)) {
+                string alias = Expect(TokenType.IDENTIFIER).Value;
+                tableRef = new AliasNode(tableName, alias);
+              } else if (Current.Type == TokenType.IDENTIFIER) {
+                string alias = Current.Value;
+                Advance();  // consume the alias identifier
+                tableRef = new AliasNode(tableName, alias);
+              }
+            }
+
 
             // Parse optional clauses in correct order: WHERE -> GROUP BY -> HAVING
             ASTNode whereClause = null;
@@ -156,6 +186,36 @@ namespace SQLInterpreter {
             Expect(TokenType.DROP);
             Expect(TokenType.TABLE);
             return new DropTableNode(new IdentifierNode(Expect(TokenType.IDENTIFIER).Value));
+        }
+
+        private ASTNode ParseColumnWithOptionalAlias() {
+            ASTNode expr = ParseExpression();
+
+            if (Match(TokenType.AS)) {
+              string alias = Expect(TokenType.IDENTIFIER).Value;
+              return new AliasNode(expr, alias);
+            } else if (Match(TokenType.IDENTIFIER)) {
+              // handle implicis alias (without AS keyword)
+              string alias = Expect(TokenType.IDENTIFIER).Value;
+              return new AliasNode(expr, alias);
+            }
+
+            return expr;
+        }
+
+        private ASTNode ParseTableWithOptionalAlias() {
+          var tableName = new IdentifierNode(Expect(TokenType.IDENTIFIER).Value);
+
+          if (Match(TokenType.AS)) {
+            string alias = Expect(TokenType.IDENTIFIER).Value;
+            return new AliasNode(tableName, alias);
+          } else if (Match(TokenType.IDENTIFIER)) {
+            // handle implicis alias (without AS keyword)
+            string alias = Expect(TokenType.IDENTIFIER).Value;
+            return new AliasNode(tableName, alias);
+          }
+
+          return tableName;
         }
 
         private TokenType ParseDataType() {

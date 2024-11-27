@@ -14,48 +14,53 @@ namespace SQLInterpreter {
         }
 
         public object VisitSelect(SelectNode node) {
-            var table = db.GetTable(node.Table.Name);
+            // Clear previous table alias context
+            tableAliases.Clear();
+
+            // Set up tbale alias mapping
+            string tableName;
+            if (node.Table is AliasNode tableAlias) {
+              tableName = ((IdentifierNode)tableAlias.Expression).Name;
+              tableAliases[tableAlias.Alias] = tableName;
+            } else {
+              tableName = ((IdentifierNode)node.Table).Name;
+            }
+
+            var table = db.GetTable(tableName);
             var allRecords = GetAllRecords(table).ToList();  // Materialize the records
 
             // Apply WHERE clause if present
             if (node.WhereClause != null) {
-                allRecords = allRecords.Where(r => EvaluateBoolean(node.WhereClause, r)).ToList();
+              allRecords = allRecords.Where(r => EvaluateBoolean(node.WhereClause, r)).ToList();
             }
 
-            // If no GROUP BY, and no aggregates, return filtered records directly
-            if (!node.GroupBy.Any() && !node.Columns.Any(c => c is AggregateNode)) {
-                // Handle SELECT *
-                if (node.Columns.Count == 1 && node.Columns[0] is IdentifierNode id && id.Name == "*") {
-                    return allRecords;
-                }
-
-                // Handle specific columns
-                return allRecords.Select(record => {
-                    var projection = new Dictionary<string, object>();
-                    foreach (var col in node.Columns.OfType<IdentifierNode>()) {
-                        projection[col.Name] = record[col.Name];
+            // Handle aggregates
+                if (node.Columns.Any(c => c is AggregateNode || (c is AliasNode a && a.Expression is AggregateNode))) {
+                    var result = new Dictionary<string, object>();
+                    foreach (var col in node.Columns) {
+                        if (col is AggregateNode aggNode) {
+                            result[GetAggregateColumnName(aggNode)] = EvaluateAggregate(aggNode, allRecords);
+                        } else if (col is AliasNode aliasNode && aliasNode.Expression is AggregateNode agg) {
+                            result[aliasNode.Alias] = EvaluateAggregate(agg, allRecords);
+                        }
                     }
-                    return projection;
-                }).ToList();
-            }
-
-            // Handle grouping and aggregation
-            var groupedResults = !node.GroupBy.Any()
-                ? new[] { new { Key = "", Records = allRecords } }
-                : allRecords.GroupBy(r => string.Join(":", node.GroupBy.Select(g => r[g.Name]?.ToString() ?? "null")))
-                          .Select(g => new { g.Key, Records = g.ToList() });
-
-            var results = new List<Dictionary<string, object>>();
-            foreach (var group in groupedResults) {
-                var groupResult = ProcessGroup(node.Columns, group.Records, node.GroupBy);
-
-                // Apply HAVING clause if present
-                if (node.HavingClause == null || EvaluateBoolean(node.HavingClause, groupResult)) {
-                    results.Add(groupResult);
+                    return new List<Dictionary<string, object>> { result };
                 }
-            }
 
-            return results;
+    // Handle regular columns
+    return allRecords.Select(record => {
+        var projection = new Dictionary<string, object>();
+        foreach (var col in node.Columns) {
+            if (col is AliasNode alias) {
+                projection[alias.Alias] = EvaluateOperand(alias.Expression, record);
+            } else if (col is TableReferenceNode tableRef) {
+                projection[tableRef.ColumnName] = record[tableRef.ColumnName];
+            } else if (col is IdentifierNode idNode) {
+                projection[idNode.Name] = record[idNode.Name];
+            }
+        }
+        return projection;
+    }).ToList();
         }
 
         private Dictionary<string, object> ProcessGroup(List<ASTNode> columns, List<Dictionary<string, object>> records,
@@ -256,6 +261,23 @@ namespace SQLInterpreter {
             throw new NotImplementedException();
         }
 
+        public object VisitAlias(AliasNode node) {
+            // for column aliases, we just handle in the column projection
+            // for table aliases, we just treturn the table name
+            return Visit(node.Expression);
+        }
+
+        public object VisitTableReference(TableReferenceNode node) {
+          // find the actual table alias in the current context
+          var table = GetTableByAlias(node.TableAlias);
+          if (table == null) {
+            throw new Exception($"Unknown table alias: {node.TableAlias}");
+          }
+
+          // Store the actual column name for later use
+          return $"{node.TableAlias}.{node.ColumnName}";
+        }
+
         private object Visit(ASTNode node) {
             return node.Accept(this);
         }
@@ -336,6 +358,12 @@ namespace SQLInterpreter {
 
         private object EvaluateOperand(ASTNode node, Dictionary<string, object> record) {
           switch (node) {
+            case TableReferenceNode tableRef:
+              if (!record.ContainsKey(tableRef.ColumnName)) {
+                throw new Exception($"Column '{tableRef.ColumnName}' not found");
+              }
+              return record[tableRef.ColumnName];
+
             case IdentifierNode id:
               if (!record.ContainsKey(id.Name))
                 throw new Exception($"Column '{id.Name}' not found");
@@ -356,8 +384,44 @@ namespace SQLInterpreter {
                 _ => throw new Exception($"Unsupported operator in expression: {binOp.Operator}")
               };
 
+            case AggregateNode aggNode:
+              var records = GetCurrentGroup() ?? new List<Dictionary<string, object>>();
+              return EvaluateAggregate(aggNode, records);
+
             default:
               throw new Exception($"Invalid operand node type: {node.GetType()}");
+          }
+        }
+
+        private object EvaluateAggregate(AggregateNode node, List<Dictionary<string, object>> records) {
+          if (!records.Any()) return null;
+
+          switch (node.Function) {
+            case TokenType.COUNT:
+              if (node.Argument is IdentifierNode id && id.Name == "*") {
+                return records.Count();
+              }
+              return records.Count(r => EvaluateOperand(node.Argument, r) != null);
+
+            case TokenType.AVG:
+              var values = records.Select(r => EvaluateOperand(node.Argument, r)).Where(v => v != null).Select(v => Convert.ToDecimal(v)).ToList();
+              if (!values.Any()) return null;
+              return values.Average();
+            case TokenType.MIN:
+              var minValues = records.Select(r => EvaluateOperand(node.Argument, r)).Where(v => v != null).ToList();
+              if (!minValues.Any()) return null;
+              return minValues.Min();
+            case TokenType.MAX:
+              var maxValues = records.Select(r => EvaluateOperand(node.Argument, r)).Where(v => v != null).ToList();
+              if (!maxValues.Any()) return null;
+              return maxValues.Max();
+            case TokenType.SUM:
+              var sumValues = records.Select(r => EvaluateOperand(node.Argument, r)).Where(v => v != null).Select(v => Convert.ToDecimal(v)).ToList();
+              if (!sumValues.Any()) return null;
+              return sumValues.Sum();
+
+            default:
+              throw new Exception($"Unsupported aggregate function: {node.Function}");
           }
         }
 
@@ -376,6 +440,15 @@ namespace SQLInterpreter {
                 TokenType.DATE => typeof(DateOnly),
                 _ => throw new Exception($"Unsupported type: {sqlType}")
             };
+        }
+
+        private Dictionary<string, string> tableAliases = new Dictionary<string, string>();
+
+        private Table GetTableByAlias(string alias) {
+          if (tableAliases.TryGetValue(alias, out string tableName)) {
+            return db.GetTable(tableName);
+          }
+          throw new Exception($"Unknown table alias: {alias}");
         }
 
         private object Add(object left, object right) {

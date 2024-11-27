@@ -15,5 +15,7 @@ namespace SQLInterpreter {
         T VisitIdentifier(IdentifierNode node);
         T VisitColumnDef(ColumnDefNode node);
         T VisitAggregate(AggregateNode node);
+        T VisitAlias(AliasNode node);
+        T VisitTableReference(TableReferenceNode node);
     }
 }

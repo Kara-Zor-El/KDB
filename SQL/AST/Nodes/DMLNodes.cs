@@ -1,12 +1,12 @@
 namespace SQLInterpreter {
     public class SelectNode : ASTNode {
         public List<ASTNode> Columns { get; }
-        public IdentifierNode Table { get; }
+        public ASTNode Table { get; }
         public ASTNode WhereClause { get; }
         public List<IdentifierNode> GroupBy { get; }
         public ASTNode HavingClause { get; }
 
-        public SelectNode(List<ASTNode> columns, IdentifierNode table, ASTNode whereClause, List<IdentifierNode> groupBy = null, ASTNode havingClause = null) {
+        public SelectNode(List<ASTNode> columns, ASTNode table, ASTNode whereClause, List<IdentifierNode> groupBy = null, ASTNode havingClause = null) {
             Columns = columns;
             Table = table;
             WhereClause = whereClause;

@@ -72,17 +72,19 @@ namespace SQLInterpreter {
                 case TokenType.MAX:
                 case TokenType.AVG:
                 case TokenType.SUM:
-                    var function = Current.Type;
-                    Advance();
-                    Expect(TokenType.LEFT_PAREN);
-                    ASTNode arg;
-                    if (function == TokenType.COUNT && Match(TokenType.ASTERISK)) {
-                        arg = new IdentifierNode("*");
-                    } else {
-                        arg = ParseExpression();
-                    }
-                    Expect(TokenType.RIGHT_PAREN);
-                    return new AggregateNode(function, arg);
+                  var function = Current.Type;
+                  Advance();
+                  Expect(TokenType.LEFT_PAREN);
+                  ASTNode arg;
+                  if (function == TokenType.COUNT && Match(TokenType.ASTERISK)) {
+                    arg = new IdentifierNode("*");
+                  } else {
+                    arg = ParseColumnReference();
+                  }
+                  Expect(TokenType.RIGHT_PAREN);
+                  return new AggregateNode(function, arg);
+                case TokenType.IDENTIFIER:
+                  return ParseColumnReference();
                 case TokenType.NUMBER_LITERAL:
                     var numValue = decimal.Parse(Current.Value);
                     Advance();
@@ -92,11 +94,6 @@ namespace SQLInterpreter {
                     var strValue = Current.Value;
                     Advance();
                     return new LiteralNode(strValue, TokenType.STRING_LITERAL);
-
-                case TokenType.IDENTIFIER:
-                    var idValue = Current.Value;
-                    Advance();
-                    return new IdentifierNode(idValue);
 
                 case TokenType.LEFT_PAREN:
                     Advance();
@@ -122,6 +119,32 @@ namespace SQLInterpreter {
                 default:
                     throw new Exception($"Unexpected token type in value: {Current.Type}");
             }
+        }
+
+        private ASTNode ParseColumnReference() {
+          var identifier = Expect(TokenType.IDENTIFIER).Value;
+
+          if (Current.Type == TokenType.DOT) {
+            Advance();
+            var columnName = Expect(TokenType.IDENTIFIER).Value;
+            return new TableReferenceNode(identifier, columnName);
+          }
+
+          return new IdentifierNode(identifier);
+        }
+
+        private ASTNode ParseAggregate() {
+          var function = Current.Type;
+          Advance();
+          Expect(TokenType.LEFT_PAREN);
+          ASTNode arg;
+          if (function == TokenType.COUNT && Match(TokenType.ASTERISK)) {
+            arg = new IdentifierNode("*");
+          } else {
+            arg = ParseExpression();
+          }
+          Expect(TokenType.RIGHT_PAREN);
+          return new AggregateNode(function, arg);
         }
     }
 }

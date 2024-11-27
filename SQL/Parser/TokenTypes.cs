@@ -15,7 +15,7 @@ namespace SQLInterpreter {
         COUNT, SUM, AVG, MIN, MAX,
 
         // Grouping
-        GROUP, BY, HAVING,
+        GROUP, BY, HAVING, AS,
 
         // Symbols
         LEFT_PAREN, RIGHT_PAREN,
@@ -30,7 +30,8 @@ namespace SQLInterpreter {
 
         // Special
         EOF,
-        INVALID
+        INVALID,
+        DOT
     }
 
     public class Token {
