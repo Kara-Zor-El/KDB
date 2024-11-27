@@ -18,3 +18,4 @@ bin/
 
 # Runtime files
 *.dat
+*.db
