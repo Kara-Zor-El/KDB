@@ -1,14 +1,17 @@
 using System;
 using System.Collections.Generic;
+using SQLInterpreter.Core;
 
 namespace SQLInterpreter {
     public partial class Parser {
         private readonly List<Token> tokens;
         private int position;
+        private readonly Database db;
 
-        public Parser(List<Token> tokens) {
+        public Parser(List<Token> tokens, Database db) {
             this.tokens = tokens;
             position = 0;
+            this.db = db ?? throw new ArgumentNullException(nameof(db));
         }
 
         public ASTNode Parse() {

@@ -30,7 +30,7 @@ namespace SQLInterpreter {
                 } while (token.Type != TokenType.EOF);
 
                 // Parse
-                var parser = new Parser(tokens);
+                var parser = new Parser(tokens, database);
                 var ast = parser.Parse();
 
                 // Evaluate

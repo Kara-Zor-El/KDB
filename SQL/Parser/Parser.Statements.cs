@@ -92,14 +92,20 @@ namespace SQLInterpreter {
             Expect(TokenType.INSERT);
             Expect(TokenType.INTO);
             var tableName = new IdentifierNode(Expect(TokenType.IDENTIFIER).Value);
-
-            // Parse column list
-            Expect(TokenType.LEFT_PAREN);
             var columns = new List<IdentifierNode>();
-            do {
-                columns.Add(new IdentifierNode(Expect(TokenType.IDENTIFIER).Value));
-            } while (Match(TokenType.COMMA));
-            Expect(TokenType.RIGHT_PAREN);
+
+            // Parse optional column list
+            var hasColumnList = Match(TokenType.LEFT_PAREN);
+            if (hasColumnList) {
+              do {
+                  columns.Add(new IdentifierNode(Expect(TokenType.IDENTIFIER).Value));
+              } while (Match(TokenType.COMMA));
+              Expect(TokenType.RIGHT_PAREN);
+            } else {
+              // get all the columns from the table
+              var table = db.GetTable(tableName.Name);
+              columns = table.Columns.Select(c => new IdentifierNode(c.Name)).ToList();
+            }
 
             Expect(TokenType.VALUES);
             var valuesList = new List<List<ASTNode>>();
